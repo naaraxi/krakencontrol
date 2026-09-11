@@ -1,0 +1,9 @@
+# written at runtime, not part of the package
+config.json
+token
+fonts.json
+frames/
+images/
+bundled/
+.chrome/
+__pycache__/

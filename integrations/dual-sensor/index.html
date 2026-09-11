@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>dual sensor</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: #000; display: flex; align-items: center; justify-content: center; }
+  #wrap { display: flex; align-items: center; justify-content: center; }
+  #wrap.stacked { flex-direction: column; }
+  #wrap.columns { flex-direction: row; }
+  .cell { text-align: center; line-height: 1; }
+  .cap { text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+  .val { white-space: nowrap; font-variant-numeric: tabular-nums;
+         font-feature-settings: "tnum" 1; }
+  #divider { flex: 0 0 auto; }
+</style>
+</head>
+<body>
+  <div id="wrap" class="stacked">
+    <div class="cell" id="cell_a"><div class="cap" id="cap_a"></div><div class="val" id="val_a">--</div></div>
+    <div id="divider"></div>
+    <div class="cell" id="cell_b"><div class="cap" id="cap_b"></div><div class="val" id="val_b">--</div></div>
+  </div>
+
+<script>
+// krakencontrol calls kcUpdate() every frame. Two sensors, one shared type size so
+// the pair reads as one block rather than two unrelated numbers.
+const wrap = document.getElementById("wrap");
+const divider = document.getElementById("divider");
+const cells = {
+  a: { box: document.getElementById("cell_a"),
+       cap: document.getElementById("cap_a"), val: document.getElementById("val_a") },
+  b: { box: document.getElementById("cell_b"),
+       cap: document.getElementById("cap_b"), val: document.getElementById("val_b") },
+};
+const ctx = document.createElement("canvas").getContext("2d");
+const PROBE = 100;
+
+// Colour, or a picture - picked from images/, typed as a URL, or one of the bundled
+// ones - with an optional veil over it so the reading stays readable. The colour stays
+// underneath as the fallback.
+function paintBackground(settings) {
+  const colour = settings.background_color || "#000000";
+  const mode = settings.background_mode || "color";
+  const image = mode === "image_pick" ? (settings.background_image || "")
+              : mode === "image_url" ? (settings.background_url || "")
+              : mode === "image_bundled" ? (settings.background_bundled || "")
+              : "";
+  if (!image) {
+    document.body.style.background = colour;
+    return;
+  }
+  const fit = settings.background_fit === "contain" ? "contain"
+            : settings.background_fit === "stretch" ? "100% 100%" : "cover";
+  const dim = Math.min(90, Math.max(0, Number(settings.background_dim) || 0)) / 100;
+  const veil = `linear-gradient(rgba(0,0,0,${dim}), rgba(0,0,0,${dim}))`;
+  document.body.style.background =
+    `${veil}, url("${image}") center / ${fit} no-repeat, ${colour}`;
+}
+
+function mix(low, high, t) {
+  const parse = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ar, ag, ab] = parse(low);
+  const [br, bg, bb] = parse(high);
+  const k = Math.max(0, Math.min(1, t));
+  const c = (a, b) => Math.round(a + (b - a) * k);
+  return `rgb(${c(ar, br)},${c(ag, bg)},${c(ab, bb)})`;
+}
+
+// A readout with no bar has no range of its own, so the gradient needs its own two
+// stops: at or below the low value it is the low colour, at or above the high value
+// the high one, blended in between.
+function colourFor(value, settings) {
+  if (settings.text_mode !== "gradient") return settings.text_color || "#ffffff";
+  if (value === null || value === undefined) return settings.text_color || "#ffffff";
+  const low = Number(settings.value_low);
+  const high = Number(settings.value_high);
+  const span = high - low;
+  if (!isFinite(span) || span === 0) return settings.text_color_high || "#e74c3c";
+  return mix(settings.text_color_low || "#2ecc71",
+             settings.text_color_high || "#e74c3c", (value - low) / span);
+}
+
+// Families beyond the installed ones come from Google Fonts, pulled in on demand. The
+// daemon waits for the face to arrive before it takes the frame.
+const requested = new Set();
+function useFont(family) {
+  if (!family || requested.has(family)) return;
+  requested.add(family);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  // The older css endpoint quietly drops weights a family does not have, where css2
+  // rejects the whole request.
+  link.href = "https://fonts.googleapis.com/css?family=" +
+    encodeURIComponent(family) + ":400,700,900&display=swap";
+  document.head.appendChild(link);
+}
+
+function format(value, settings) {
+  if (value === null || value === undefined) return "--";
+  const number = Number(value).toFixed(Number(settings.decimals) || 0);
+  if (settings.unit === "degc") return number + "°C";
+  if (settings.unit === "deg") return number + "°";
+  return number;
+}
+
+// Canvas gives the ink box as well as the font box; a DOM element only gives the
+// line box, and centring on that leaves digits sitting high.
+function metrics(text, family, weight, size) {
+  ctx.font = weight + " " + size + "px " + family;
+  const m = ctx.measureText(text);
+  return {
+    width: m.width || 1,
+    inkAscent: m.actualBoundingBoxAscent,
+    inkDescent: m.actualBoundingBoxDescent,
+    fontAscent: m.fontBoundingBoxAscent,
+    fontDescent: m.fontBoundingBoxDescent,
+  };
+}
+
+function fit(text, family, weight, maxWidth, maxHeight) {
+  const m = metrics(text, family, weight, PROBE);
+  const ink = Math.max(1, m.inkAscent + m.inkDescent);
+  return Math.max(12, Math.floor(PROBE * Math.min(maxWidth / m.width, maxHeight / ink)));
+}
+
+function inkOffset(text, family, weight, size) {
+  const m = metrics(text, family, weight, size);
+  const baseline = (size - (m.fontAscent + m.fontDescent)) / 2 + m.fontAscent;
+  return size / 2 - (baseline - (m.inkAscent - m.inkDescent) / 2);
+}
+
+// Digits are not all the same width in every family, so a reading of 41 is narrower
+// than 88 and the layout shifts as the temperature moves. Ask for tabular figures, and
+// reserve the room the widest digits would need so nothing can move even without them.
+function widestDigit(family, weight, size) {
+  let widest = 0, glyph = "0";
+  for (let d = 0; d <= 9; d++) {
+    const w = metrics(String(d), family, weight, size).width;
+    if (w > widest) { widest = w; glyph = String(d); }
+  }
+  return glyph;
+}
+
+function reservedWidth(text, family, weight, size) {
+  const glyph = widestDigit(family, weight, size);
+  return metrics(text.replace(/[0-9]/g, glyph), family, weight, size).width;
+}
+
+function kcUpdate(payload) {
+  const settings = payload.settings || {};
+  const sensors = payload.sensors || {};
+  const stage = payload.device || { width: 320, height: 320 };
+  const columns = settings.layout === "columns";
+  useFont(settings.font || "Roboto");
+  const family = '"' + (settings.font || "Roboto") + '", sans-serif';
+  const weight = settings.weight || "900";
+  const dividerOn = settings.divider !== false && settings.divider !== "false";
+
+  paintBackground(settings);
+  wrap.className = columns ? "columns" : "stacked";
+  wrap.style.color = settings.text_color || "#ffffff";
+  const colourOf = {
+    a: colourFor((sensors.sensor_a || {}).value, settings),
+    b: colourFor((sensors.sensor_b || {}).value, settings),
+  };
+
+  const text = {
+    a: format((sensors.sensor_a || {}).value, settings),
+    b: format((sensors.sensor_b || {}).value, settings),
+  };
+
+  function applySize(size) {
+    const capSize = Math.max(11, Math.round(size * 0.28));
+    for (const key of ["a", "b"]) {
+      const cell = cells[key];
+      const caption = (settings["caption_" + key] || "").trim();
+      cell.val.textContent = text[key];
+      cell.val.style.cssText =
+        `font-family:${family};font-weight:${weight};font-size:${size}px;` +
+        `color:${colourOf[key]};` +
+        `transform:translateY(${inkOffset(text[key], family, weight, size).toFixed(1)}px)`;
+      // Both cells take the same reserved width, so the divider sits still.
+      cell.box.style.minWidth = Math.ceil(Math.max(
+        reservedWidth(text.a, family, weight, size),
+        reservedWidth(text.b, family, weight, size))) + "px";
+      cell.cap.textContent = caption;
+      cell.cap.style.cssText =
+        `font-family:${family};font-weight:${weight};font-size:${capSize}px;` +
+        `color:${settings.caption_color || "#9aa3b2"};` +
+        `margin-bottom:${Math.round(size * 0.08)}px;display:${caption ? "block" : "none"}`;
+    }
+    const spacing = Number(settings.gap) > 0
+      ? Number(settings.gap)
+      : Math.round(size * (columns ? 0.35 : 0.24));
+    wrap.style.gap = spacing + "px";
+    divider.style.display = dividerOn ? "block" : "none";
+    divider.style.background = settings.divider_color || "#5a5a5a";
+    // Length runs along the divider, thickness across it, whichever way it is turned.
+    const thickness = Math.max(1, Number(settings.divider_thickness) || 2);
+    const fraction = Math.min(100, Math.max(5, Number(settings.divider_length) || 55)) / 100;
+    const length = Math.round((columns ? stage.height : stage.width) * fraction);
+    divider.style.width = (columns ? thickness : length) + "px";
+    divider.style.height = (columns ? length : thickness) + "px";
+  }
+
+  // A round panel is narrower away from the middle, so columns get less room.
+  const maxWidth = stage.width * (columns ? 0.40 : 0.72);
+  const maxHeight = stage.height * (columns ? 0.30 : 0.26);
+  let size = Number(settings.font_size) > 0
+    ? Number(settings.font_size)
+    : Math.min(fit(text.a, family, weight, maxWidth, maxHeight),
+               fit(text.b, family, weight, maxWidth, maxHeight));
+  applySize(size);
+
+  // Fitting the ink is not enough: captions, gaps, dividers and line boxes all add
+  // size, so measure the block as laid out and pull it back in. Both axes matter -
+  // the panel is round, so a full-width row is clipped at the edges.
+  if (!(Number(settings.font_size) > 0)) {
+    const wLimit = stage.width * (columns ? 0.80 : 0.86);
+    const hLimit = stage.height * (columns ? 0.80 : 0.88);
+    for (let pass = 0; pass < 4; pass++) {
+      const box = wrap.getBoundingClientRect();
+      const ratio = Math.min(wLimit / box.width, hLimit / box.height, 1);
+      if (ratio >= 0.995) break;
+      size = Math.max(12, Math.floor(size * ratio));
+      applySize(size);
+    }
+  }
+  // Position is the last word: the fit above decides the size, this decides where each
+  // reading sits. Moving one off the round panel is the operator's business. The offsets
+  // go on the cells, so they do not disturb the layout the fit measured.
+  for (const key of ["a", "b"]) {
+    const x = Number(settings[key + "_offset_x"]) || 0;
+    const y = Number(settings[key + "_offset_y"]) || 0;
+    cells[key].box.style.transform = `translate(${x}px, ${y}px)`;
+  }
+  return true;
+}
+
+window.kcUpdate = kcUpdate;
+</script>
+</body>
+</html>

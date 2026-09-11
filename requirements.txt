@@ -1,0 +1,3 @@
+# The only dependency outside the Python standard library.
+# Used to make thumbnails for the panel picture gallery.
+Pillow

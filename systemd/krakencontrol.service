@@ -1,0 +1,13 @@
+[Unit]
+Description=krakencontrol - web integrations on the NZXT Kraken LCD
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@HOME@
+ExecStart=@HOME@/krakencontrol.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

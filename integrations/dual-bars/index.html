@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>dual bars</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+  body { background: #000; }
+  #stage { position: relative; width: 100%; height: 100%; }
+  svg { position: absolute; inset: 0; }
+  #readouts { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+              display: flex; align-items: center; justify-content: center;
+              line-height: 1; white-space: nowrap; }
+  #readouts.stacked { flex-direction: column; }
+  #readouts.columns { flex-direction: row; }
+  .cell { text-align: center; }
+  .val { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+  .cap { text-transform: uppercase; letter-spacing: .08em; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <svg id="arcs" viewBox="0 0 320 320" preserveAspectRatio="none"></svg>
+    <div id="readouts" class="columns">
+      <div class="cell"><div class="cap" id="cap_a"></div><div class="val" id="val_a">--</div></div>
+      <div class="cell"><div class="cap" id="cap_b"></div><div class="val" id="val_b">--</div></div>
+    </div>
+  </div>
+
+<script>
+// krakencontrol calls kcUpdate() every frame. Two arcs hug the rim, one per sensor,
+// each growing from the middle of its side as its reading climbs through its range.
+const stage = document.getElementById("stage");
+const svg = document.getElementById("arcs");
+const readouts = document.getElementById("readouts");
+const parts = {
+  a: { cap: document.getElementById("cap_a"), val: document.getElementById("val_a") },
+  b: { cap: document.getElementById("cap_b"), val: document.getElementById("val_b") },
+};
+const ctx = document.createElement("canvas").getContext("2d");
+const PROBE = 100;
+
+function paintBackground(settings) {
+  const colour = settings.background_color || "#000000";
+  const mode = settings.background_mode || "color";
+  const image = mode === "image_pick" ? (settings.background_image || "")
+              : mode === "image_url" ? (settings.background_url || "")
+              : mode === "image_bundled" ? (settings.background_bundled || "")
+              : "";
+  if (!image) {
+    document.body.style.background = colour;
+    return;
+  }
+  const fit = settings.background_fit === "contain" ? "contain"
+            : settings.background_fit === "stretch" ? "100% 100%" : "cover";
+  const dim = Math.min(90, Math.max(0, Number(settings.background_dim) || 0)) / 100;
+  const veil = `linear-gradient(rgba(0,0,0,${dim}), rgba(0,0,0,${dim}))`;
+  document.body.style.background =
+    `${veil}, url("${image}") center / ${fit} no-repeat, ${colour}`;
+}
+
+// Families beyond the installed ones come from Google Fonts, pulled in on demand. The
+// daemon waits for the face to arrive before it takes the frame.
+const requested = new Set();
+function useFont(family) {
+  if (!family || requested.has(family)) return;
+  requested.add(family);
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  // The older css endpoint quietly drops weights a family does not have, where css2
+  // rejects the whole request.
+  link.href = "https://fonts.googleapis.com/css?family=" +
+    encodeURIComponent(family) + ":400,700,900&display=swap";
+  document.head.appendChild(link);
+}
+
+function format(value, settings) {
+  if (value === null || value === undefined) return "--";
+  const number = Number(value).toFixed(Number(settings.decimals) || 0);
+  if (settings.unit === "degc") return number + "°C";
+  if (settings.unit === "deg") return number + "°";
+  return number;
+}
+
+function mix(low, high, t) {
+  const parse = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ar, ag, ab] = parse(low);
+  const [br, bg, bb] = parse(high);
+  const k = Math.max(0, Math.min(1, t));
+  const c = (a, b) => Math.round(a + (b - a) * k);
+  return `rgb(${c(ar, br)},${c(ag, bg)},${c(ab, bb)})`;
+}
+
+function metrics(text, family, weight, size) {
+  ctx.font = weight + " " + size + "px " + family;
+  const m = ctx.measureText(text);
+  return { width: m.width || 1, ink: m.actualBoundingBoxAscent + m.actualBoundingBoxDescent };
+}
+
+// Screen angles: 0 is 3 o'clock and they grow clockwise, because SVG y points down.
+function point(cx, cy, r, degrees) {
+  const rad = degrees * Math.PI / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+function arc(cx, cy, r, from, to) {
+  const [x1, y1] = point(cx, cy, r, from);
+  const [x2, y2] = point(cx, cy, r, to);
+  const large = Math.abs(to - from) > 180 ? 1 : 0;
+  const sweep = to > from ? 1 : 0;
+  return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} ${sweep} ` +
+         `${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+
+// Digits are not all the same width in every family, so a reading of 41 is narrower
+// than 88 and the layout shifts as the temperature moves. Ask for tabular figures, and
+// reserve the room the widest digits would need so nothing can move even without them.
+function widestDigit(family, weight, size) {
+  let widest = 0, glyph = "0";
+  for (let d = 0; d <= 9; d++) {
+    const w = metrics(String(d), family, weight, size).width;
+    if (w > widest) { widest = w; glyph = String(d); }
+  }
+  return glyph;
+}
+
+function reservedWidth(text, family, weight, size) {
+  const glyph = widestDigit(family, weight, size);
+  return metrics(text.replace(/[0-9]/g, glyph), family, weight, size).width;
+}
+
+function kcUpdate(payload) {
+  const settings = payload.settings || {};
+  const sensors = payload.sensors || {};
+  const size = payload.device || { width: 320, height: 320 };
+  const cx = size.width / 2, cy = size.height / 2;
+
+  paintBackground(settings);
+  svg.setAttribute("viewBox", `0 0 ${size.width} ${size.height}`);
+
+  const thickness = Math.max(2, Number(settings.thickness) || 16);
+  const inset = Math.max(0, Number(settings.inset) || 0);
+  const span = Math.min(170, Math.max(20, Number(settings.span) || 120));
+  const radius = Math.min(cx, cy) - inset - thickness / 2;
+  const cap = (settings.rounded === false || settings.rounded === "false") ? "butt" : "round";
+  const showTrack = settings.track !== false && settings.track !== "false";
+  const gradient = settings.bar_mode !== "simple";
+  const grows = settings.direction || "start";
+  const columns = settings.layout !== "stacked";
+  readouts.className = columns ? "columns" : "stacked";
+
+  const shapes = [];
+  for (const key of ["a", "b"]) {
+    const sensor = sensors["sensor_" + key] || {};
+    const low = Number(settings["min_" + key]);
+    const high = Number(settings["max_" + key]);
+    const range = high - low;
+    const fraction = sensor.value === null || sensor.value === undefined
+      || !isFinite(range) || range === 0
+        ? 0 : Math.max(0, Math.min(1, (sensor.value - low) / range));
+
+    // Angles: 0 is 3 o'clock, growing clockwise. Each bar sits on the side its reading
+    // is on - left and right when the readings are side by side, top and bottom when
+    // they are stacked - and reaches half its length either way from that point.
+    const centre = columns ? (key === "a" ? 180 : 0) : (key === "a" ? 270 : 90);
+    // Start at the bottom for side bars, at the left for top and bottom bars.
+    const toStart = columns ? (key === "a" ? -1 : 1) : (key === "a" ? -1 : 1);
+    const start = centre + (span / 2) * toStart;
+    const end = centre - (span / 2) * toStart;
+
+    if (showTrack) {
+      shapes.push(`<path d="${arc(cx, cy, radius, start, end)}" fill="none" ` +
+                  `stroke="${settings.track_color || "#2a2f38"}" stroke-width="${thickness}" ` +
+                  `stroke-linecap="${cap}"/>`);
+    }
+    if (fraction > 0.001) {
+      const colour = gradient
+        ? mix(settings.bar_color_low || "#2ecc71", settings.bar_color_high || "#e74c3c", fraction)
+        : (settings.bar_color || "#4f9cf9");
+      const reach = end - start;
+      const legs = grows === "middle"
+        ? [[centre, (reach / 2) * fraction], [centre, -(reach / 2) * fraction]]
+        : grows === "end"
+          ? [[end, -reach * fraction]]
+          : [[start, reach * fraction]];
+      for (const [from, sweep] of legs) {
+        shapes.push(`<path d="${arc(cx, cy, radius, from, from + sweep)}" fill="none" ` +
+                    `stroke="${colour}" stroke-width="${thickness}" stroke-linecap="${cap}"/>`);
+      }
+    }
+  }
+  svg.innerHTML = shapes.join("");
+
+  // Readouts sit in the clear middle, inside the arcs.
+  useFont(settings.font || "Roboto");
+  const family = '"' + (settings.font || "Roboto") + '", sans-serif';
+  const weight = settings.weight || "900";
+  const inner = (radius - thickness / 2) * 2;
+  const texts = {
+    a: format((sensors.sensor_a || {}).value, settings),
+    b: format((sensors.sensor_b || {}).value, settings),
+  };
+
+  function applyType(type) {
+    const capSize = Math.max(9, Math.round(type * 0.30));
+    readouts.style.gap = Math.round(type * (columns ? 0.35 : 0.24)) + "px";
+    for (const key of ["a", "b"]) {
+      const part = parts[key];
+      const caption = (settings["caption_" + key] || "").trim();
+      part.val.textContent = texts[key];
+      part.val.style.cssText = `font-family:${family};font-weight:${weight};` +
+        `font-size:${type}px;color:${settings.text_color || "#ffffff"}`;
+      part.val.parentElement.style.minWidth = Math.ceil(Math.max(
+        reservedWidth(texts.a, family, weight, type),
+        reservedWidth(texts.b, family, weight, type))) + "px";
+      part.cap.textContent = caption;
+      part.cap.style.cssText = `font-family:${family};font-weight:${weight};` +
+        `font-size:${capSize}px;color:${settings.caption_color || "#9aa3b2"};` +
+        `margin-bottom:${Math.round(type * 0.10)}px;` +
+        `display:${caption ? "block" : "none"}`;
+    }
+  }
+
+  let type = Number(settings.font_size) > 0 ? Number(settings.font_size) : PROBE;
+  applyType(type);
+  if (!(Number(settings.font_size) > 0)) {
+    // Two readings and their names have to share the space the arcs leave, so lay the
+    // block out and shrink it to fit rather than guessing from the type size alone.
+    const widest = Math.max(metrics(texts.a, family, weight, PROBE).width,
+                            metrics(texts.b, family, weight, PROBE).width);
+    const share = columns ? 0.30 : 0.62;      // two readings share the width when side by side
+    type = Math.max(10, Math.floor(PROBE * (inner * share) / widest));
+    applyType(type);
+    for (let pass = 0; pass < 5; pass++) {
+      const box = readouts.getBoundingClientRect();
+      const limit = inner * 0.80;
+      if (box.height <= limit && box.width <= inner * 0.72) break;
+      const ratio = Math.min(limit / box.height, (inner * 0.72) / box.width, 0.98);
+      type = Math.max(10, Math.floor(type * ratio));
+      applyType(type);
+    }
+  }
+  return true;
+}
+
+window.kcUpdate = kcUpdate;
+</script>
+</body>
+</html>

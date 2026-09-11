@@ -1,0 +1,440 @@
+{
+  "description": "Two sensors, stacked or side by side.",
+  "settings": [
+    {
+      "key": "sensor_a",
+      "label": "Sensor A",
+      "type": "sensor",
+      "default": "package",
+      "section": "Sensors"
+    },
+    {
+      "key": "caption_a",
+      "label": "Caption A",
+      "type": "text",
+      "default": "CPU",
+      "max": 12,
+      "section": "Sensors"
+    },
+    {
+      "key": "sensor_b",
+      "label": "Sensor B",
+      "type": "sensor",
+      "default": "gpu temp",
+      "section": "Sensors"
+    },
+    {
+      "key": "caption_b",
+      "label": "Caption B",
+      "type": "text",
+      "default": "GPU",
+      "max": 12,
+      "section": "Sensors"
+    },
+    {
+      "key": "unit",
+      "label": "Unit",
+      "type": "select",
+      "default": "deg",
+      "options": [
+        {
+          "value": "degc",
+          "label": "45°C"
+        },
+        {
+          "value": "deg",
+          "label": "45°"
+        },
+        {
+          "value": "none",
+          "label": "45"
+        }
+      ],
+      "section": "Reading"
+    },
+    {
+      "key": "decimals",
+      "label": "Decimals",
+      "type": "select",
+      "default": "0",
+      "options": [
+        {
+          "value": "0",
+          "label": "0"
+        },
+        {
+          "value": "1",
+          "label": "1"
+        }
+      ],
+      "section": "Reading"
+    },
+    {
+      "key": "font",
+      "label": "Font",
+      "type": "font",
+      "default": "Roboto",
+      "section": "Type",
+      "hint": "anything Google Fonts serves; installed families need no network"
+    },
+    {
+      "key": "weight",
+      "label": "Weight",
+      "type": "select",
+      "default": "900",
+      "options": [
+        {
+          "value": "400",
+          "label": "Regular"
+        },
+        {
+          "value": "700",
+          "label": "Bold"
+        },
+        {
+          "value": "900",
+          "label": "Black"
+        }
+      ],
+      "section": "Type"
+    },
+    {
+      "key": "font_size",
+      "label": "Size",
+      "type": "range",
+      "default": 0,
+      "min": 0,
+      "max": 140,
+      "step": 2,
+      "zero_label": "auto",
+      "section": "Type"
+    },
+    {
+      "key": "layout",
+      "label": "Layout",
+      "type": "select",
+      "default": "stacked",
+      "options": [
+        {
+          "value": "stacked",
+          "label": "Stacked"
+        },
+        {
+          "value": "columns",
+          "label": "Side by side"
+        }
+      ],
+      "section": "Layout"
+    },
+    {
+      "key": "gap",
+      "label": "Spacing",
+      "type": "range",
+      "default": 0,
+      "min": 0,
+      "max": 120,
+      "step": 2,
+      "zero_label": "auto",
+      "suffix": "px",
+      "section": "Layout"
+    },
+    {
+      "key": "a_offset_x",
+      "label": "A move X",
+      "type": "range",
+      "default": 0,
+      "min": -120,
+      "max": 120,
+      "step": 2,
+      "suffix": "px",
+      "hint": "moves the first reading only",
+      "section": "Layout"
+    },
+    {
+      "key": "a_offset_y",
+      "label": "A move Y",
+      "type": "range",
+      "default": 0,
+      "min": -120,
+      "max": 120,
+      "step": 2,
+      "suffix": "px",
+      "hint": "moves the first reading only",
+      "section": "Layout"
+    },
+    {
+      "key": "b_offset_x",
+      "label": "B move X",
+      "type": "range",
+      "default": 0,
+      "min": -120,
+      "max": 120,
+      "step": 2,
+      "suffix": "px",
+      "hint": "moves the second reading only",
+      "section": "Layout"
+    },
+    {
+      "key": "b_offset_y",
+      "label": "B move Y",
+      "type": "range",
+      "default": 0,
+      "min": -120,
+      "max": 120,
+      "step": 2,
+      "suffix": "px",
+      "hint": "moves the second reading only",
+      "section": "Layout"
+    },
+    {
+      "key": "divider",
+      "label": "Show divider",
+      "type": "checkbox",
+      "default": true,
+      "section": "Divider"
+    },
+    {
+      "key": "divider_length",
+      "label": "Length",
+      "type": "range",
+      "default": 55,
+      "min": 10,
+      "max": 100,
+      "step": 5,
+      "suffix": "%",
+      "hint": "across the panel when stacked, down it in columns",
+      "section": "Divider"
+    },
+    {
+      "key": "divider_thickness",
+      "label": "Thickness",
+      "type": "range",
+      "default": 2,
+      "min": 1,
+      "max": 24,
+      "step": 1,
+      "suffix": "px",
+      "section": "Divider"
+    },
+    {
+      "key": "divider_color",
+      "label": "Divider",
+      "type": "color",
+      "default": "#5a5a5a",
+      "section": "Divider"
+    },
+    {
+      "key": "caption_color",
+      "label": "Captions",
+      "type": "color",
+      "default": "#9aa3b2",
+      "section": "Colors"
+    },
+    {
+      "key": "text_mode",
+      "label": "Text",
+      "type": "select",
+      "default": "simple",
+      "section": "Colors",
+      "options": [
+        {
+          "value": "simple",
+          "label": "Simple"
+        },
+        {
+          "value": "gradient",
+          "label": "Gradient"
+        }
+      ]
+    },
+    {
+      "key": "text_color",
+      "label": "Colour",
+      "type": "color",
+      "default": "#ffffff",
+      "section": "Colors",
+      "show_if": {
+        "key": "text_mode",
+        "value": "simple"
+      }
+    },
+    {
+      "key": "text_color_low",
+      "label": "Low colour",
+      "type": "color",
+      "default": "#2ecc71",
+      "section": "Colors",
+      "show_if": {
+        "key": "text_mode",
+        "value": "gradient"
+      }
+    },
+    {
+      "key": "value_low",
+      "label": "Low at",
+      "type": "number",
+      "default": 30,
+      "min": -50,
+      "max": 150,
+      "step": 1,
+      "suffix": "°",
+      "section": "Colors",
+      "show_if": {
+        "key": "text_mode",
+        "value": "gradient"
+      },
+      "hint": "readings at or below this take the low colour"
+    },
+    {
+      "key": "text_color_high",
+      "label": "High colour",
+      "type": "color",
+      "default": "#e74c3c",
+      "section": "Colors",
+      "show_if": {
+        "key": "text_mode",
+        "value": "gradient"
+      }
+    },
+    {
+      "key": "value_high",
+      "label": "High at",
+      "type": "number",
+      "default": 60,
+      "min": -50,
+      "max": 150,
+      "step": 1,
+      "suffix": "°",
+      "section": "Colors",
+      "show_if": {
+        "key": "text_mode",
+        "value": "gradient"
+      },
+      "hint": "readings at or above this take the high colour"
+    },
+    {
+      "key": "background_mode",
+      "label": "Background",
+      "type": "select",
+      "default": "color",
+      "section": "Colors",
+      "options": [
+        {
+          "value": "color",
+          "label": "Color"
+        },
+        {
+          "value": "image_pick",
+          "label": "Image (pick)"
+        },
+        {
+          "value": "image_url",
+          "label": "Image (url)"
+        },
+        {
+          "value": "image_bundled",
+          "label": "Image (bundled)"
+        }
+      ]
+    },
+    {
+      "key": "background_color",
+      "label": "Colour",
+      "type": "color",
+      "default": "#000000",
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "value": "color"
+      }
+    },
+    {
+      "key": "background_image",
+      "label": "Picture",
+      "type": "image",
+      "source": "user",
+      "default": "",
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "value": "image_pick"
+      },
+      "hint": "files you put in krakencontrol/images/"
+    },
+    {
+      "key": "background_url",
+      "label": "URL",
+      "type": "text",
+      "default": "",
+      "max": 400,
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "value": "image_url"
+      },
+      "hint": "any address the machine can reach"
+    },
+    {
+      "key": "background_bundled",
+      "label": "Picture",
+      "type": "image",
+      "source": "bundled",
+      "default": "",
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "value": "image_bundled"
+      },
+      "hint": "shipped with krakencontrol"
+    },
+    {
+      "key": "background_fit",
+      "label": "Fit",
+      "type": "select",
+      "default": "cover",
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "values": [
+          "image_pick",
+          "image_url",
+          "image_bundled"
+        ]
+      },
+      "options": [
+        {
+          "value": "cover",
+          "label": "Cover"
+        },
+        {
+          "value": "contain",
+          "label": "Contain"
+        },
+        {
+          "value": "stretch",
+          "label": "Stretch"
+        }
+      ]
+    },
+    {
+      "key": "background_dim",
+      "label": "Dim",
+      "type": "range",
+      "default": 30,
+      "min": 0,
+      "max": 90,
+      "step": 5,
+      "suffix": "%",
+      "section": "Colors",
+      "show_if": {
+        "key": "background_mode",
+        "values": [
+          "image_pick",
+          "image_url",
+          "image_bundled"
+        ]
+      },
+      "hint": "darkens the picture so the reading stays legible"
+    }
+  ]
+}

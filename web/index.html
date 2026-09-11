@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>krakencontrol</title>
+<style>
+  :root {
+    --bg: #16181d; --panel: #1e2128; --border: #2e333d;
+    --text: #e6e8ec; --muted: #9aa3b2; --accent: #4f9cf9; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, "Noto Sans", sans-serif; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; }
+  .status { color: var(--muted); font-size: 13px; }
+  .status.bad { color: var(--bad); }
+  .loader { display: flex; gap: 8px; margin-bottom: 18px; }
+  .loader input { flex: 1; }
+  .recent { display: flex; gap: 8px; margin: 0 0 18px; align-items: center; }
+  .recent .label { color: var(--muted); font-size: 12px; text-transform: uppercase;
+                   letter-spacing: .06em; }
+  .recent select { flex: 1; }
+  .recent select:disabled { opacity: .5; }
+  .layout { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .preview { flex: 0 0 260px; }
+  .screen { width: 260px; height: 260px; border-radius: 50%; background: #000;
+            border: 6px solid #2a2e37; overflow: hidden; }
+  .screen img { width: 100%; height: 100%; display: block; }
+  .caption { text-align: center; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .panels { flex: 1 1 520px; min-width: 300px; }
+  fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 0 0 14px;
+             padding: 12px 14px; background: var(--panel); }
+  legend { padding: 0 6px; color: var(--muted); font-size: 12px;
+           text-transform: uppercase; letter-spacing: .06em; }
+  .hint { color: var(--muted); font-size: 12px; margin: 2px 0 10px; }
+  /* Sections become cards in a responsive grid: one column on a phone, as many as fit
+     on a wide window, instead of one long scroll. */
+  #fields { column-width: 265px; column-gap: 12px; }
+  .section { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 12px;
+             border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 12px;
+             background: #1b1e25; }
+  .group { margin: 0 0 4px; color: var(--muted); font-size: 11px;
+           text-transform: uppercase; letter-spacing: .06em; }
+  .section .row:last-child { margin-bottom: 0; }
+  .gallery-row { flex-wrap: wrap; }
+  .gallery-row .gallery { flex: 1 1 100%; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .row[hidden] { display: none; }
+  .gallery-row { align-items: flex-start; }
+  .gallery-row label { padding-top: 8px; }
+  .gallery { flex: 1; display: grid; gap: 6px; padding: 6px; max-height: 230px;
+             overflow-y: auto; background: #14161b; border: 1px solid var(--border);
+             border-radius: 6px; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); }
+  .thumb { aspect-ratio: 1; padding: 0; border: 2px solid transparent; border-radius: 4px;
+           background-color: #1e2128; background-size: cover; background-position: center;
+           cursor: pointer; }
+  .thumb:hover { border-color: var(--muted); }
+  .thumb.selected { border-color: var(--accent); }
+  .thumb.none { color: var(--muted); font-size: 10px; }
+  .row label { flex: 0 0 104px; color: var(--muted); font-size: 13px; }
+  input, select { flex: 1; min-width: 0; background: #14161b; color: var(--text);
+                  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  input[type=color] { padding: 2px; height: 32px; flex: 0 0 52px; }
+  input[type=range] { accent-color: var(--accent); }
+  input[type=checkbox] { flex: 0 0 auto; width: 16px; height: 16px; accent-color: var(--accent); }
+  .value { flex: 0 0 56px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .actions { display: flex; gap: 10px; align-items: center; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+           background: #262b33; color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+  .saved { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>krakencontrol</h1>
+    <span class="status" id="status">connecting...</span>
+  </header>
+
+  <div class="loader">
+    <input id="url" placeholder="http://... web integration to display" spellcheck="false">
+    <button id="load" class="primary">Load</button>
+    <button id="reload" title="Fetch the page again, after editing an integration">Reload</button>
+    <button id="bundled" title="Load the bundled single sensor readout">Bundled</button>
+  </div>
+
+  <div class="recent">
+    <span class="label">History</span>
+    <select id="history" title="Integrations loaded before"></select>
+    <button id="clear" title="Forget everything except the integration loaded now">Clear</button>
+  </div>
+
+  <div class="layout">
+    <div class="preview">
+      <div class="screen"><img id="preview" alt="LCD preview"></div>
+      <div class="caption" id="device">&nbsp;</div>
+    </div>
+
+    <div class="panels">
+      <fieldset id="integration_box">
+        <legend id="integration_name">Integration</legend>
+        <div class="hint" id="integration_hint"></div>
+        <div id="fields"></div>
+        <div class="actions" id="integration_actions" hidden>
+          <button class="primary" id="apply">Apply</button>
+          <button id="revert">Revert</button>
+          <span class="saved" id="saved"></span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Device</legend>
+        <div class="hint">krakencontrol's own settings. These apply as you change them.</div>
+        <div class="row"><label for="interval">Interval</label>
+          <input type="range" id="interval" min="0.5" max="20" step="0.5">
+          <span class="value" id="interval_v"></span></div>
+        <div class="row"><label for="brightness">Brightness</label>
+          <input type="range" id="brightness" min="0" max="100" step="1">
+          <span class="value" id="brightness_v"></span></div>
+        <div class="row"><label for="orientation">Rotation</label>
+          <select id="orientation">
+            <option value="0">0&deg;</option><option value="90">90&deg;</option>
+            <option value="180">180&deg;</option><option value="270">270&deg;</option>
+          </select></div>
+      </fieldset>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+
+function post(path, body) {
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((r) => r.json());
+}
+
+// ---------- integration settings, built from the manifest ----------
+
+function sensorOptions(selected) {
+  const groups = {};
+  for (const s of state.sensors) (groups[s.device_name] ||= []).push(s);
+  return Object.entries(groups).map(([device, list]) =>
+    `<optgroup label="${device}">` + list.map((s) =>
+      `<option value="${s.id}"${s.id === selected ? " selected" : ""}>${s.label}</option>`
+    ).join("") + "</optgroup>").join("");
+}
+
+function fieldRow(field, value) {
+  const id = "f_" + field.key;
+  const label = `<label for="${id}">${field.label || field.key}</label>`;
+  const showVals = field.show_if
+    ? [].concat(field.show_if.values || field.show_if.value).map(String)
+    : null;
+  const row = showVals
+    ? ` id="row_${field.key}" data-show-if="${field.show_if.key}" ` +
+      `data-show-val="${showVals.join("|")}"`
+    : ` id="row_${field.key}"`;
+  let control = "";
+  switch (field.type) {
+    case "select":
+      control = `<select id="${id}">` + (field.options || []).map((o) =>
+        `<option value="${o.value}"${String(o.value) === String(value) ? " selected" : ""}>${o.label}</option>`
+      ).join("") + "</select>";
+      break;
+    case "sensor":
+      control = `<select id="${id}">${sensorOptions(value)}</select>`;
+      break;
+    case "color":
+      control = `<input type="color" id="${id}" value="${value || "#000000"}">` +
+                `<span class="value" id="${id}_v">${value || ""}</span>`;
+      break;
+    case "range":
+      control = `<input type="range" id="${id}" min="${field.min ?? 0}" max="${field.max ?? 100}" ` +
+                `step="${field.step ?? 1}" value="${Number(value) || 0}"` +
+                (field.hint ? ` title="${field.hint}"` : "") + ">" +
+                `<span class="value" id="${id}_v"></span>`;
+      break;
+    case "font": {
+      const families = state.fonts || [];
+      const groups = {};
+      for (const item of families) (groups[item.category] ||= []).push(item.name);
+      const body = Object.entries(groups).map(([group, names]) =>
+        `<optgroup label="${group}">` + names.map((name) =>
+          `<option value="${name}"${name === value ? " selected" : ""}>${name}</option>`
+        ).join("") + "</optgroup>").join("");
+      control = `<select id="${id}">${body}</select>`;
+      break;
+    }
+    case "image": {
+      const images = (field.source === "bundled" ? state.bundled : state.images) || [];
+      const folder = field.source === "bundled" ? "bundled" : "images";
+      const tiles = [`<button type="button" class="thumb none${value ? "" : " selected"}" ` +
+                     `data-url="" title="no picture">none</button>`].concat(
+        images.map((img) =>
+          `<button type="button" class="thumb${img.url === value ? " selected" : ""}" ` +
+          `data-url="${img.url}" title="${img.name}" ` +
+          `style="background-image:url('${img.url}?thumb=1')"></button>`));
+      control = `<input type="hidden" id="${id}" value="${value || ""}">` +
+        `<div class="gallery" id="${id}_gallery">${tiles.join("")}</div>` +
+        (images.length ? "" : `<span class="value">put files in krakencontrol/${folder}/</span>`);
+      break;
+    }
+    case "number":
+      control = `<input type="number" id="${id}" value="${Number(value) || 0}" ` +
+                `min="${field.min ?? -9999}" max="${field.max ?? 9999}" step="${field.step ?? 1}"` +
+                (field.hint ? ` title="${field.hint}"` : "") + ">" +
+                (field.suffix ? `<span class="value">${field.suffix}</span>` : "");
+      break;
+    case "checkbox":
+      control = `<input type="checkbox" id="${id}"${value ? " checked" : ""}>`;
+      break;
+    default:
+      control = `<input type="text" id="${id}" value="${(value ?? "").toString().replace(/"/g, "&quot;")}"` +
+                (field.max ? ` maxlength="${field.max}"` : "") + ">";
+  }
+  const rowClass = field.type === "image" ? "row gallery-row" : "row";
+  return `<div class="${rowClass}"${row}>${label}${control}</div>`;
+}
+
+// A field can name another field it depends on, so a mode dropdown can bring its own
+// controls with it instead of every option's settings being on show at once.
+function applyVisibility() {
+  for (const row of document.querySelectorAll("#fields .row[data-show-if]")) {
+    const control = document.getElementById("f_" + row.dataset.showIf);
+    const current = control
+      ? (control.type === "checkbox" ? String(control.checked) : control.value)
+      : null;
+    row.hidden = !row.dataset.showVal.split("|").includes(String(current));
+  }
+}
+
+function rangeText(field, value) {
+  const number = Number(value);
+  if (number === 0 && field.zero_label) return field.zero_label;
+  // A range that goes negative is a direction, so show which way it points.
+  const sign = Number(field.min) < 0 && number > 0 ? "+" : "";
+  return sign + number + (field.suffix || "");
+}
+
+function renderFields() {
+  const integration = state.integration;
+  const fields = integration.settings || [];
+  $("integration_name").textContent =
+    integration.url ? shortUrl(integration.url) : "Integration";
+  // Fields keep manifest order; a change of section starts a new card.
+  const cards = [];
+  for (const field of fields) {
+    const name = field.section || "";
+    if (!cards.length || cards[cards.length - 1].name !== name) cards.push({ name, rows: [] });
+    cards[cards.length - 1].rows.push(fieldRow(field, integration.values[field.key]));
+  }
+  $("fields").innerHTML = cards.map((card) =>
+    `<div class="section">` +
+    (card.name ? `<div class="group">${card.name}</div>` : "") +
+    card.rows.join("") + `</div>`).join("");
+  $("integration_actions").hidden = fields.length === 0;
+
+  if (!integration.url) {
+    $("integration_hint").textContent = "Load a web integration by URL to see its settings.";
+  } else if (fields.length === 0) {
+    $("integration_hint").textContent =
+      "This page offers no settings (no integration.json next to it). It is shown as-is.";
+  } else {
+    $("integration_hint").textContent = integration.description || integration.url;
+  }
+
+  const controllers = new Set(fields.filter((f) => f.show_if).map((f) => f.show_if.key));
+  for (const key of controllers) {
+    const el = $("f_" + key);
+    if (el) el.addEventListener("change", applyVisibility);
+  }
+  applyVisibility();
+
+  for (const field of fields) {
+    const el = $("f_" + field.key);
+    if (!el) continue;
+    if (field.type === "range") {
+      const out = $("f_" + field.key + "_v");
+      const show = () => (out.textContent = rangeText(field, el.value));
+      el.addEventListener("input", show);
+      show();
+    }
+    if (field.type === "image") {
+      const gallery = $("f_" + field.key + "_gallery");
+      gallery.addEventListener("click", (event) => {
+        const tile = event.target.closest(".thumb");
+        if (!tile) return;
+        el.value = tile.dataset.url;          // el is the hidden input holding the choice
+        for (const other of gallery.querySelectorAll(".thumb")) {
+          other.classList.toggle("selected", other === tile);
+        }
+      });
+    }
+    if (field.type === "color") {
+      const out = $("f_" + field.key + "_v");
+      el.addEventListener("input", () => (out.textContent = el.value));
+    }
+  }
+}
+
+function collectFields() {
+  const payload = {};
+  for (const field of state.integration.settings || []) {
+    const el = $("f_" + field.key);
+    if (!el) continue;
+    payload[field.key] = field.type === "checkbox" ? el.checked
+      : (field.type === "range" || field.type === "number") ? Number(el.value)
+      : el.value;
+  }
+  return payload;
+}
+
+// ---------- history ----------
+
+// The URL is the name. Trim only the noise that every entry shares.
+function shortUrl(url) {
+  return url.replace(/^https?:\/\//, "").replace(/\/index\.html$/, "").replace(/\/$/, "");
+}
+
+function renderHistory() {
+  const select = $("history");
+  const history = state.history || [];
+  const current = state.integration.url;
+
+  if (!history.length) {
+    select.innerHTML = '<option value="">nothing loaded yet</option>';
+    select.disabled = true;
+    $("clear").disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+  select.innerHTML = history.map((entry) =>
+    `<option value="${encodeURI(entry.url)}" title="${entry.url}"` +
+    `${entry.url === current ? " selected" : ""}>${shortUrl(entry.url)}</option>`
+  ).join("");
+
+  // Clear keeps whatever is on screen, so with only that in the list there is nothing to do.
+  $("clear").disabled = history.length <= (history.some((e) => e.url === current) ? 1 : 0);
+}
+
+// ---------- device settings ----------
+
+function showDeviceValues() {
+  $("interval_v").textContent = Number($("interval").value).toFixed(1) + "s";
+  $("brightness_v").textContent = $("brightness").value + "%";
+}
+
+function fillCore(core) {
+  $("interval").value = core.interval;
+  $("brightness").value = core.brightness;
+  $("orientation").value = core.orientation;
+  showDeviceValues();
+}
+
+async function pushCore() {
+  showDeviceValues();
+  await post("/api/core", {
+    interval: Number($("interval").value),
+    brightness: Number($("brightness").value),
+    orientation: Number($("orientation").value),
+  });
+}
+
+// ---------- polling ----------
+
+function statusText(status, integration) {
+  if (status.error) return status.error;
+  const values = Object.entries(status.values || {});
+  if (!values.length) return integration.url ? "running" : "no integration loaded";
+  return values.map(([key, value]) =>
+    value === null ? `${key}: --` : `${key}: ${Number(value).toFixed(1)}°C`).join("  ");
+}
+
+async function refresh(full) {
+  try {
+    const next = await (await fetch("/api/state")).json();
+    const changed = !state || state.integration.url !== next.integration.url;
+    state = next;
+    if (full || changed) {
+      $("url").value = state.integration.url;
+      renderFields();
+      fillCore(state.core);
+    }
+    renderHistory();
+    const el = $("status");
+    el.textContent = statusText(state.status, state.integration);
+    el.className = state.status.error ? "status bad" : "status";
+    $("device").textContent =
+      `${state.status.device_name} - ${state.status.width}x${state.status.height}`;
+    $("preview").src = "/api/preview.png?t=" + Date.now();
+  } catch (err) {
+    $("status").textContent = "daemon not responding";
+    $("status").className = "status bad";
+  }
+}
+
+// ---------- wiring ----------
+
+async function loadUrl(url) {
+  $("url").value = url;
+  $("status").textContent = "loading...";
+  await post("/api/load", { url });
+  await refresh(true);
+}
+
+$("load").addEventListener("click", () => loadUrl($("url").value));
+
+$("history").addEventListener("change", () => {
+  const url = decodeURI($("history").value);
+  if (url && url !== state.integration.url) loadUrl(url);
+});
+
+$("clear").addEventListener("click", async () => {
+  if (!confirm("Forget every integration except the one loaded now, including their settings?")) return;
+  await post("/api/history/clear", {});
+  await refresh(true);
+});
+
+$("reload").addEventListener("click", async () => {
+  await post("/api/reload", {});
+  $("status").textContent = "reloading...";
+  setTimeout(() => refresh(true), 800);
+});
+
+$("bundled").addEventListener("click", () =>
+  loadUrl(location.origin + "/integrations/single-sensor/"));
+
+$("apply").addEventListener("click", async () => {
+  await post("/api/settings", collectFields());
+  $("saved").textContent = "saved";
+  setTimeout(() => ($("saved").textContent = ""), 2000);
+  setTimeout(() => refresh(true), 400);
+});
+
+$("revert").addEventListener("click", () => refresh(true));
+
+for (const id of ["interval", "brightness", "orientation"]) {
+  $(id).addEventListener("change", pushCore);
+}
+$("interval").addEventListener("input", showDeviceValues);
+$("brightness").addEventListener("input", showDeviceValues);
+
+refresh(true);
+setInterval(() => refresh(false), 2000);
+</script>
+</body>
+</html>
